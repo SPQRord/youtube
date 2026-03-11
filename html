@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>SPQRord</title>
+
+<style>
+
+:root{
+--primary:#0084ff;
+--primary-dark:#006edc;
+--bg:#f0f2f5;
+--text:#111;
+--card:#fff;
+}
+
+body.dark{
+--bg:#111;
+--text:#f0f0f0;
+--card:#1a1a1a;
+}
+
+*{
+box-sizing:border-box;
+margin:0;
+padding:0;
+}
+
+body{
+font-family:system-ui;
+background:var(--bg);
+color:var(--text);
+}
+
+header{
+display:flex;
+justify-content:space-between;
+align-items:center;
+padding:12px 20px;
+background:var(--card);
+box-shadow:0 2px 10px rgba(0,0,0,0.15);
+}
+
+h1{
+font-size:20px;
+color:var(--primary);
+}
+
+#theme-toggle{
+padding:8px 14px;
+border:none;
+border-radius:8px;
+background:var(--primary);
+color:white;
+cursor:pointer;
+}
+
+main{
+padding:20px;
+max-width:1200px;
+margin:auto;
+}
+
+#upload-box{
+background:var(--card);
+padding:20px;
+border-radius:10px;
+margin-bottom:25px;
+}
+
+#upload-box input{
+width:100%;
+padding:10px;
+margin:6px 0;
+border-radius:6px;
+border:1px solid #ccc;
+}
+
+button{
+background:var(--primary);
+border:none;
+color:white;
+padding:10px 18px;
+border-radius:6px;
+cursor:pointer;
+}
+
+button:hover{
+background:var(--primary-dark);
+}
+
+#videos{
+display:grid;
+grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
+gap:20px;
+}
+
+.video-card{
+background:var(--card);
+border-radius:10px;
+overflow:hidden;
+box-shadow:0 3px 10px rgba(0,0,0,0.15);
+}
+
+video{
+width:100%;
+}
+
+.video-info{
+padding:10px;
+}
+
+.video-title{
+font-weight:600;
+margin-bottom:6px;
+}
+
+.like-btn{
+margin-top:6px;
+font-size:14px;
+}
+
+</style>
+</head>
+
+<body>
+
+<header>
+<h1>SPQRord</h1>
+<button id="theme-toggle">Dark Mode</button>
+</header>
+
+<main>
+
+<div id="upload-box">
+
+<h3>Upload Video</h3>
+
+<input id="title" placeholder="Video title">
+
+<input id="video-url" placeholder="Video URL (Supabase Storage link)">
+
+<button onclick="uploadVideo()">Upload</button>
+
+</div>
+
+<div id="videos"></div>
+
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<script>
+
+const SUPABASE_URL="YOUR_SUPABASE_URL";
+const SUPABASE_KEY="YOUR_SUPABASE_KEY";
+
+const {createClient}=supabase;
+const db=createClient(SUPABASE_URL,SUPABASE_KEY);
+
+const videosDiv=document.getElementById("videos");
+
+/* THEME */
+
+const themeBtn=document.getElementById("theme-toggle");
+
+if(localStorage.getItem("theme")==="dark"){
+document.body.classList.add("dark");
+themeBtn.textContent="Light Mode";
+}
+
+themeBtn.onclick=()=>{
+document.body.classList.toggle("dark");
+
+if(document.body.classList.contains("dark")){
+localStorage.setItem("theme","dark");
+themeBtn.textContent="Light Mode";
+}else{
+localStorage.setItem("theme","light");
+themeBtn.textContent="Dark Mode";
+}
+};
+
+/* LOAD VIDEOS */
+
+async function loadVideos(){
+
+videosDiv.innerHTML="";
+
+const {data}=await db
+.from("videos")
+.select("*")
+.order("created_at",{ascending:false});
+
+data.forEach(addVideo);
+}
+
+/* ADD VIDEO */
+
+async function addVideo(v){
+
+const card=document.createElement("div");
+card.className="video-card";
+
+const {data:likes}=await db
+.from("likes")
+.select("*")
+.eq("video_id",v.id);
+
+card.innerHTML=`
+
+<video controls src="${v.url}"></video>
+
+<div class="video-info">
+
+<div class="video-title">${v.title}</div>
+
+<div>${likes.length} Likes</div>
+
+<button class="like-btn" onclick="likeVideo(${v.id})">👍 Like</button>
+
+</div>
+`;
+
+videosDiv.appendChild(card);
+}
+
+/* UPLOAD */
+
+async function uploadVideo(){
+
+const title=document.getElementById("title").value.trim();
+const url=document.getElementById("video-url").value.trim();
+
+if(!title || !url) return alert("Fill all fields");
+
+await db.from("videos").insert({
+title:title,
+url:url
+});
+
+document.getElementById("title").value="";
+document.getElementById("video-url").value="";
+
+loadVideos();
+}
+
+/* LIKE */
+
+async function likeVideo(id){
+
+await db.from("likes").insert({
+video_id:id
+});
+
+loadVideos();
+}
+
+/* REALTIME */
+
+db.channel("videos")
+.on("postgres_changes",{event:"INSERT",schema:"public",table:"videos"},payload=>{
+addVideo(payload.new);
+})
+.subscribe();
+
+loadVideos();
+
+</script>
+
+</body>
+</html>
